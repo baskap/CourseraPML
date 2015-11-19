@@ -1,0 +1,174 @@
+---
+title: "Practical Machine Learning -  Prediction Assignment Writeup "
+output:
+  html_document:
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+Scripts have been produced, executed and tested on RSudio Version 0.99.451 and Windows 7.
+
+### Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Data
+
+The training data for this project are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv]
+
+The test data are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv]
+
+The data for this project come from this source: [http://groupware.les.inf.puc-rio.br/har]. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+### What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details.
+
+### Solution
+
+Installing and loading all needed libraries 
+
+```{r message=FALSE}
+#install.packages("caret")
+#install.packages("randomForest")
+#install.packages("rpart")
+#install.packages("rpart.plot")
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+```
+
+Setting seed to ensure reproducibility of results.
+
+```{r}
+# Setting seed for reproducibility
+set.seed(40587);
+```
+
+#### Loading data sets
+
+```{r}
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# Loading training data set from url given in instructions
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+
+# Loading testing data set from url given in instructions
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+
+#Strings NA and #DIV/0! and also an empty string are converted to missing data (NAs)
+```
+
+#### Cleaning data
+
+```{r}
+# Dropping columns were missing values contains 
+training <- training[,colSums(is.na(training)) <  0.5 * dim(training)[1]]
+testing <- testing[,colSums(is.na(testing)) <  0.5 * dim(testing)[1]]
+
+# Dropping irrelevant variables (user_name, raw_timestamp_part_1, raw_timestamp_part_,2 cvtd_timestamp, new_window, and  num_window)
+training  <-training[, -c(1:7)]
+testing <- testing[, -c(1:7)]
+
+dim(training)
+dim(testing)
+```
+
+Training data set have 53 variables and 19622 observations.
+Testing data set have 53 variables and 20 observations.
+
+
+```{r}
+plot(training$classe)
+```
+
+#### Cross-validation
+
+I use subsampling without replacement as a method for conducting cross-validation. Two datasets are created using original training set: 
+
+* myTraining (60% of the original training date set)
+* myTesting (40% of the original training set)
+
+Model will be created using myTraining set and will be tested on myTesting. 
+Most accurate model will be applied to original testing data set.
+
+
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+myTraining <- training[inTrain,]
+myTesting <- training[-inTrain,]
+```
+
+#### Out-of-sample error
+
+Outcome variable (classe) is a factor variable with 5 unordered levels. Appropriate method of measurement
+out-of-sample error is proportion of misclassified samples over the total sample in test
+dataset (and is equal to 1- accuracy).
+
+#### Motivation
+
+Outcome variable "classe" is unordered factor variable, so as an out-of-sample error measurement the 1-accuracy was chosen.
+We have large sample size (N=19622) so the simple subsumpling with replacement was chosen as a method of cross-validation.
+Features with many missing values or irrelevant are dropped from model.
+Decision trees and random forest perform feature selection inherently, so it is not needed to select features before applying ML algorithm to data in this case.
+
+### Predictions
+
+#### First prediction model - decision tree
+
+```{r}
+# Building model
+firstModel <-  rpart(classe ~ ., data = myTraining, method = "class")
+# Predicting using decision tree
+firstPrediction <- predict(firstModel, myTesting, type="class")
+# Plotting obtained decision tree
+rpart.plot(firstModel)
+# Plotting confusion matrix - result of predicting on myTesting using decision tree
+confusionMatrix(firstPrediction, myTesting$classe)
+```
+
+#### Second prediction model - random forest
+
+```{r}
+# Building model
+secondModel <-  randomForest(classe ~ ., data = myTraining, method = "class")
+# Predictingusing random forest
+secondPrediction <- predict(secondModel, myTesting, type="class")
+# Plotting confusion matrix - result of predicting on myTesting using random forest
+confusionMatrix(secondPrediction, myTesting$classe)
+```
+
+#### Final prediction using random forest
+
+Accuracy of first classification model (decision tree) is 0.7462 (95% CI : (0.7365, 0.7558)).
+Second model (random forest) works much better. Its accuracy is 0.991 (95% CI : (0.9887, 0.993)).
+**So the random forest model was chosen and applied to the 20 test cases.** The expected out-of-sample error is 1 - accuracy so 
+it is estimated at 0.009 = **0.9%**. With such high accuracy we can expect data almost all 
+prediction on our test set will be true. Expected value of samples misclassified is 20 * (1 - 0.991) = 0.18.
+
+
+```{r}
+# Prediction of results for testing set
+
+predictfinal <- predict(secondModel, testing, type="class")
+predictfinal
+
+# Generating files used for sumbission in next assignment
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictfinal)
+```
